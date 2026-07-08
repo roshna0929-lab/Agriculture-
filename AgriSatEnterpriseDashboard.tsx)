@@ -1,0 +1,352 @@
+import React, { useState } from 'react';
+import { useRemoteSensing } from './hooks/useRemoteSensing';
+import { SatelliteMetadata, XAIDecision, AlertMatrix, SimulationParameters, SpectralLayer } from './types/agrisat';
+
+// --- PRODUCTION HARDCODED DATA METRIC MATRICES ---
+const SAT_METADATA_REGISTRY: SatelliteMetadata[] = [
+  { asset: 'Resourcesat-2A', resolution: '5.8m (LISS-4)', lastScan: '48 mins ago', cloudCoverage: 2.4, acquisitionTime: '10:24 IST', revisitTime: '5 Days', status: 'Operational' },
+  { asset: 'RISAT-1A (EOS-04)', resolution: '1.0m (SAR C-band)', lastScan: '3 hours ago', cloudCoverage: 0.0, acquisitionTime: '06:12 IST', revisitTime: '12 Days', status: 'Operational' },
+  { asset: 'Cartosat-3', resolution: '0.28m (Panchromatic)', lastScan: '1 day ago', cloudCoverage: 8.1, acquisitionTime: '11:40 IST', revisitTime: '4 Days', status: 'Tasked' }
+];
+
+const XAI_RECOMMENDATIONS: XAIDecision[] = [
+  {
+    id: 'REC-2026-091',
+    recommendation: 'Initiate targeted micro-fertigation (Potassium & Nitrogen mix) in North-West sector.',
+    targetMetric: 'Nutrient Remediation',
+    confidence: 94.2,
+    riskScore: 18,
+    satelliteSources: ['Resourcesat-2A', 'Sentinel-2B'],
+    spectralTriggers: [
+      { index: 'NDVI', delta: '-14.2% drop over 12 days', scientificRationale: 'Anomalous multi-spectral canopy reflectance dip indicating chlorophyll degradation.' },
+      { index: 'LST_THERMAL', delta: '+2.8°C thermal rise', scientificRationale: 'Canopy temperature escalation caused by localized stomatal closure due to moisture stress.' }
+    ],
+    groundTruthValidation: 'Matches localized Soil Health Card telemetry registered for Village Grid #42.'
+  }
+];
+
+const REALTIME_ALERTS: AlertMatrix[] = [
+  { id: 'ALT-04', type: 'PestOutbreak', severity: 'CRITICAL', impactZone: 'Zone-B Rice Canopy', recommendedAction: 'Deploy light traps and apply organic Azadirachtin solution immediately.', countdownMinutes: 45, satelliteSource: 'Cartosat-3' },
+  { id: 'ALT-05', type: 'Heatwave', severity: 'WARNING', impactZone: 'Entire Registered Plot', recommendedAction: 'Activate pulse irrigation cycle to buffer soil ambient layer.', countdownMinutes: 120, satelliteSource: 'RISAT-1A (EOS-04)' }
+];
+
+export const AgriSatEnterpriseDashboard: React.FC = () => {
+  // Global State Managers
+  const [currentLanguage, setCurrentLanguage] = useState<string>('en');
+  const [diseaseImage, setDiseaseImage] = useState<string | null>(null);
+  const [isAnalyzingDisease, setIsAnalyzingDisease] = useState<boolean>(false);
+  const [diseaseResult, setDiseaseResult] = useState<any>(null);
+  
+  const [simParams, setSimParams] = useState<SimulationParameters>({
+    rainfallMm: 12,
+    temperatureC: 34,
+    humidityPct: 78,
+    fertilizerKgHa: 140,
+    soilMoisturePct: 55
+  });
+
+  const {
+    activeLayer, setActiveLayer,
+    comparisonLayer, setComparisonLayer,
+    opacity, setOpacity,
+    isSplitScreen, setIsSplitScreen,
+    timelinePeriod, setTimelinePeriod,
+    isPlayingTimeline, setIsPlayingTimeline,
+    simulatedMetrics, recalculateEngine
+  } = useRemoteSensing(simParams);
+
+  const handleSimChange = (key: keyof SimulationParameters, val: number) => {
+    const updated = { ...simParams, [key]: val };
+    setSimParams(updated);
+    recalculateEngine(updated);
+  };
+
+  const simulateDiseaseDiagnostic = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setIsAnalyzingDisease(true);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setDiseaseImage(event.target?.result as string);
+        setTimeout(() => {
+          setDiseaseResult({
+            disease: 'Bacterial Leaf Blight (Xanthomonas oryzae)',
+            severity: 'Medium (34% Leaf Area)',
+            confidence: 91.8,
+            organicTreatment: 'Application of fresh cow dung slurry extract combined with neem oil treatment.',
+            chemicalTreatment: 'Copper hydroxide 53.8% WP spray at 2.5g per Litre matrix.',
+            office: 'Krishi Vigyan Kendra (KVK) Hub - 4.2 km away'
+          });
+          setIsAnalyzingDisease(false);
+        }, 1800);
+      };
+      reader.readAsDataURL(e.target.files[0]);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500 selection:text-slate-950">
+      
+      {/* HEADER BAR SYSTEM */}
+      <header className="sticky top-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-emerald-500/20 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-2 rounded-lg shadow-lg shadow-emerald-500/20">
+            <span className="font-mono text-xl font-black text-slate-950 tracking-tighter">ISRO</span>
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+              AgriSat AI <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">Enterprise v3.2</span>
+            </h1>
+            <p className="text-xs text-slate-400">Space-Powered Precision Agriculture Terminal</p>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-4">
+          <select 
+            value={currentLanguage} 
+            onChange={(e) => setCurrentLanguage(e.target.value)}
+            className="bg-slate-800 border border-slate-700 rounded px-2.5 py-1 text-xs text-slate-300 focus:outline-none focus:border-emerald-500"
+          >
+            <option value="en">English (Bhuvan Telemetry)</option>
+            <option value="hi">हिन्दी (Hindi)</option>
+            <option value="ta">தமிழ் (Tamil)</option>
+            <option value="te">తెలుగు (Telugu)</option>
+            <option value="pun">ਪੰਜਾਬੀ (Punjabi)</option>
+          </select>
+          <div className="hidden md:flex items-center space-x-2 text-xs bg-emerald-950/40 border border-emerald-500/30 px-3 py-1 rounded-md">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-emerald-300 font-mono tracking-wider">BHUVAN LINK: ACTIVE</span>
+          </div>
+        </div>
+      </header>
+
+      <main className="p-4 max-w-[1600px] mx-auto grid grid-cols-1 xl:grid-cols-12 gap-4">
+        
+        {/* TOP LEVEL INTEL BANNER METRICS */}
+        <section className="col-span-12 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-3 rounded-xl">
+            <span className="text-slate-400 text-xs block">Crop Health Rating</span>
+            <div className="flex items-baseline space-x-2 mt-1">
+              <span className="text-2xl font-bold font-mono text-emerald-400">88.4%</span>
+              <span className="text-xs text-emerald-500">↑ 2.1%</span>
+            </div>
+            <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div className="bg-emerald-400 h-full rounded-full" style={{ width: '88.4%' }} />
+            </div>
+          </div>
+
+          <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-3 rounded-xl">
+            <span className="text-slate-400 text-xs block">Water Sufficiency Index</span>
+            <div className="flex items-baseline space-x-2 mt-1">
+              <span className="text-2xl font-bold font-mono text-cyan-400">
+                {Math.round((1 - simulatedMetrics.waterStressIndex) * 100)}%
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1">Based on NDWI + LST Composite</p>
+          </div>
+
+          <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-3 rounded-xl">
+            <span className="text-slate-400 text-xs block">AI Yield Forecast</span>
+            <div className="flex items-baseline space-x-2 mt-1">
+              <span className="text-2xl font-bold font-mono text-yellow-400">{simulatedMetrics.predictedYieldMetric}</span>
+              <span className="text-xs text-slate-400">Tons / Hectary</span>
+            </div>
+            <p className="text-[10px] text-yellow-500/80 mt-1">Confidence Limit: ±4.2%</p>
+          </div>
+
+          <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-3 rounded-xl">
+            <span className="text-slate-400 text-xs block">Active Orbiters Overhead</span>
+            <div className="flex items-center space-x-2 mt-1">
+              <span className="text-2xl font-bold font-mono text-purple-400">3 Assets</span>
+            </div>
+            <p className="text-[10px] text-purple-300 mt-1">Cartosat | Resourcesat | RISAT</p>
+          </div>
+
+          <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-3 rounded-xl">
+            <span className="text-slate-400 text-xs block">Est. Carbon Sequestration</span>
+            <div className="flex items-baseline space-x-2 mt-1">
+              <span className="text-2xl font-bold font-mono text-teal-400">1.84</span>
+              <span className="text-xs text-slate-400">MT CO2e/Yr</span>
+            </div>
+            <div className="inline-block bg-teal-950/60 text-teal-400 text-[9px] px-1.5 rounded mt-1 border border-teal-500/20">Green-Farming Compliant</div>
+          </div>
+
+          <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-800 p-3 rounded-xl">
+            <span className="text-slate-400 text-xs block">Data Constellation Health</span>
+            <div className="flex items-baseline space-x-1 mt-1">
+              <span className="text-2xl font-bold font-mono text-blue-400">99.2</span>
+              <span className="text-xs text-slate-400">/100</span>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1">Telemetry Lag: Minimal</p>
+          </div>
+        </section>
+
+        {/* LEFT COLUMN: LIVE EARTH OBSERVATION CANVAS MAP VIEWER */}
+        <section className="col-span-12 lg:col-span-7 xl:col-span-8 flex flex-col space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col">
+            
+            {/* Map Interaction Toolbar */}
+            <div className="p-3 bg-slate-900/90 border-b border-slate-800 flex flex-wrap gap-2 items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Spectral Compute Mode:</span>
+                <select
+                  value={activeLayer}
+                  onChange={(e) => setActiveLayer(e.target.value as SpectralLayer)}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs font-mono text-emerald-400 focus:outline-none"
+                >
+                  <option value="TRUE_COLOR">True Color Composite (RGB)</option>
+                  <option value="FALSE_COLOR">False Color (NIR-R-G)</option>
+                  <option value="NDVI">NDVI (Normalized Difference Vegetation Index)</option>
+                  <option value="EVI">EVI (Enhanced Vegetation Index)</option>
+                  <option value="NDWI">NDWI (Normalized Difference Water Index)</option>
+                  <option value="SAVI">SAVI (Soil-Adjusted Vegetation Index)</option>
+                  <option value="LST_THERMAL">Land Surface Temperature (Thermal InfraRed)</option>
+                  <option value="CHLOROPHYLL">Canopy Chlorophyll Concentration</option>
+                </select>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <label className="flex items-center space-x-1.5 text-xs text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isSplitScreen}
+                    onChange={(e) => setIsSplitScreen(e.target.checked)}
+                    className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
+                  />
+                  <span>Dual Lens Split</span>
+                </label>
+
+                {isSplitScreen && (
+                  <select
+                    value={comparisonLayer}
+                    onChange={(e) => setComparisonLayer(e.target.value as SpectralLayer)}
+                    className="bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-xs font-mono text-cyan-400"
+                  >
+                    <option value="TRUE_COLOR">True Color (RGB)</option>
+                    <option value="LST_THERMAL">Thermal Index</option>
+                    <option value="NDWI">NDWI Water</option>
+                  </select>
+                )}
+              </div>
+            </div>
+
+            {/* Earth Observation Virtual Map Canvas viewport */}
+            <div className="relative h-[480px] bg-slate-950 flex items-center justify-center overflow-hidden group">
+              
+              {/* Remote sensing layer formula visualization HUD */}
+              <div className="absolute top-3 left-3 z-20 bg-slate-900/90 backdrop-blur-md p-2.5 rounded-lg border border-slate-800 text-[11px] font-mono shadow-xl space-y-1">
+                <div className="text-slate-400 uppercase tracking-widest font-bold border-b border-slate-800 pb-1 mb-1">Mathematical Index Model</div>
+                {activeLayer === 'NDVI' && (
+                  <p className="text-emerald-400 font-bold">$$NDVI = \frac{NIR - Red}{NIR + Red}$$</p>
+                )}
+                {activeLayer === 'NDWI' && (
+                  <p className="text-cyan-400 font-bold">$$NDWI = \frac{Green - NIR}{Green + NIR}$$</p>
+                )}
+                {activeLayer === 'EVI' && (
+                  <p className="text-teal-400 font-bold">$$EVI = 2.5 \times \frac{NIR - Red}{NIR + 6 \times Red - 7.5 \times Blue + 1}$$</p>
+                )}
+                {activeLayer !== 'NDVI' && activeLayer !== 'NDWI' && activeLayer !== 'EVI' && (
+                  <p className="text-slate-300">Custom Multi-Band Sensor Matrix Matrix Ratio</p>
+                )}
+                <div className="text-[10px] text-slate-400 pt-1">Active Frame Reflection Engine: <span className="text-slate-200">Simulated Matrix</span></div>
+              </div>
+
+              {/* Simulated Map Canvas Texture Layout */}
+              <div className="absolute inset-0 opacity-20 pointer-events-none mix-blend-color-dodge bg-[radial-gradient(#10b981_1px,transparent_1px)] [background-size:16px_16px]" />
+              
+              <div className="w-[90%] h-[85%] rounded-lg border border-slate-800/80 relative overflow-hidden bg-slate-900 flex items-center justify-center transition-all duration-500">
+                
+                {/* Simulated Target Plot Drawing Area Frame */}
+                <div 
+                  className="absolute inset-4 rounded border-2 border-emerald-500/40 bg-gradient-to-br from-emerald-900/20 to-emerald-950/40 flex flex-col justify-between p-3 transition-opacity duration-300"
+                  style={{ opacity: opacity }}
+                >
+                  <div className="flex justify-between items-start">
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30 font-mono">
+                      PLOT-ID: BR-409/2026
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">GeoArea: 4.82 Hectares</span>
+                  </div>
+
+                  {/* Mid Visual Index Render Indicators representing deep structural monitoring */}
+                  <div className="space-y-1 text-center">
+                    <div className="text-2xl font-black font-mono tracking-wider text-emerald-400/80 uppercase">
+                      {activeLayer} VIEW ACTIVE
+                    </div>
+                    {isSplitScreen && (
+                      <div className="text-xs font-mono text-cyan-400/80">
+                        Split Screen Split Modality Loaded: {comparisonLayer}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between text-[9px] font-mono text-slate-400">
+                    <span>Lat: 21.1458° N</span>
+                    <span>Lon: 79.0882° E</span>
+                  </div>
+                </div>
+
+                {/* Simulated Swipe Overlay Indicator bar */}
+                {isSplitScreen && (
+                  <div className="absolute inset-y-0 left-1/2 w-0.5 bg-cyan-400 shadow-[0_0_10px_#22d3ee] z-10">
+                    <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 bg-cyan-500 text-slate-950 font-mono font-bold text-[9px] px-1 rounded-full py-2">SWIPE</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom Display Floating Info bar */}
+              <div className="absolute bottom-3 right-3 left-3 bg-slate-900/90 backdrop-blur-md p-2 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
+                <div className="flex items-center space-x-3">
+                  <span className="text-slate-400 font-mono">Layer Opacity Control:</span>
+                  <input
+                    type="range" min="0.1" max="1" step="0.05"
+                    value={opacity}
+                    onChange={(e) => setOpacity(parseFloat(e.target.value))}
+                    className="w-24 accent-emerald-500 bg-slate-700 h-1 rounded-lg cursor-pointer"
+                  />
+                  <span className="font-mono text-slate-200">{Math.round(opacity * 100)}%</span>
+                </div>
+                <div className="text-slate-400 font-mono text-[11px]">
+                  Resolution Level: <span className="text-emerald-400 font-bold">0.28m ISRO Spatial Native</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Earth Observation Imagery Historical Playback Timeline Bar */}
+            <div className="p-3 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setIsPlayingTimeline(!isPlayingTimeline)}
+                  className={`px-3 py-1 text-xs rounded font-bold tracking-wide transition-all ${
+                    isPlayingTimeline ? 'bg-amber-500 text-slate-950 animate-pulse' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                  }`}
+                >
+                  {isPlayingTimeline ? '■ SUSPEND MATRIX' : '▶ RUN GROWTH TIMELINE'}
+                </button>
+
+                <div className="h-4 w-px bg-slate-800 hidden sm:block" />
+
+                <div className="flex bg-slate-950 p-0.5 rounded border border-slate-800">
+                  {['7D', '15D', '30D', '90D', '1Y'].map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setTimelinePeriod(p)}
+                      className={`px-2 py-0.5 text-[11px] font-mono rounded transition-colors ${
+                        timelinePeriod === p ? 'bg-emerald-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-right text-xs text-slate-400 font-mono">
+                Temporal Orbit Status: <span className="text-slate-200">Revisit Frequency Complete</span>
+              </div>
+            </div>
+          </div>
+
+          {/* SATELLITE ASSETS HARDWARE SENSOR REGISTRY MATRIX */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-3 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-
